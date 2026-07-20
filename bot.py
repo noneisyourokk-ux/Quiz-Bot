@@ -1,32 +1,48 @@
 import os
 import json
 import asyncio
+from aiohttp import web
 from pyrogram import Client
+from pyrogram.types import InputPollOption
 
 API_ID = int(os.environ.get("API_ID"))
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-# CHANNEL_ID अगर स्ट्रिंग है (@username) तो वैसा रहेगा, अगर नंबर है तो int में बदलेगा
+
 RAW_CHANNEL = os.environ.get("CHANNEL_ID")
-CHANNEL_ID = int(RAW_CHANNEL) if RAW_CHANNEL.startswith("-100") or RAW_CHANNEL.isdigit() else RAW_CHANNEL
+CHANNEL_ID = int(RAW_CHANNEL) if RAW_CHANNEL.startswith("-100") or RAW_CHANNEL.lstrip('-').isdigit() else RAW_CHANNEL
 
 app = Client("quiz_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
+# Render Web Port Binding के लिए छोटा HTTP Server
+async def handle_ping(request):
+    return web.Response(text="Bot is Live and Healthy!")
+
+async def start_web_server():
+    server = web.Application()
+    server.router.add_get('/', handle_ping)
+    runner = web.AppRunner(server)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"🌐 Web Server running on port {port}")
+
 async def upload_daily_quiz():
+    # सबसे पहले Web Server स्टार्ट करें ताकि Render Happy रहे
+    await start_web_server()
+    
     async with app:
         print("🚀 Quiz Uploading Started...")
         
-        # Peer Sync करने के लिए सबसे पहले चैनल की डिटेल्स लाएं
         try:
             chat = await app.get_chat(CHANNEL_ID)
             target_chat_id = chat.id
             print(f"Connected to Channel: {chat.title} ({target_chat_id})")
         except Exception as e:
-            print(f"❌ Channel ID connect error: {e}")
-            print("कृपया पक्का करें कि बॉट चैनल में Admin है!")
+            print(f"❌ Channel Connect Error: {e}")
             return
 
-        # JSON फ़ाइल से सवाल पढ़ना
         try:
             with open("questions.json", "r", encoding="utf-8") as file:
                 questions_db = json.load(file)
@@ -36,10 +52,12 @@ async def upload_daily_quiz():
 
         for index, item in enumerate(questions_db, start=1):
             try:
+                formatted_options = [InputPollOption(text=str(opt)) for opt in item["options"]]
+
                 await app.send_poll(
                     chat_id=target_chat_id,
                     question=item["question"],
-                    options=item["options"],
+                    options=formatted_options,
                     type="quiz",
                     correct_option_id=item["correct_id"],
                     is_anonymous=True
@@ -53,5 +71,10 @@ async def upload_daily_quiz():
                 
         print("\n🎉 All Quizzes Uploaded Successfully!")
 
+        # Web Server को चालू रखने के लिए लूप
+        while True:
+            await asyncio.sleep(3600)
+
 if __name__ == "__main__":
-    app.run(upload_daily_quiz())
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(upload_daily_quiz())
