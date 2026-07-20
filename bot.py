@@ -3,7 +3,6 @@ import json
 import asyncio
 from aiohttp import web
 from pyrogram import Client
-from pyrogram.types import InputPollOption
 
 API_ID = int(os.environ.get("API_ID"))
 API_HASH = os.environ.get("API_HASH")
@@ -14,7 +13,7 @@ CHANNEL_ID = int(RAW_CHANNEL) if RAW_CHANNEL.startswith("-100") or RAW_CHANNEL.l
 
 app = Client("quiz_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# Render Web Port Binding के लिए छोटा HTTP Server
+# Render Web Port Binding के लिए Web Server
 async def handle_ping(request):
     return web.Response(text="Bot is Live and Healthy!")
 
@@ -29,7 +28,7 @@ async def start_web_server():
     print(f"🌐 Web Server running on port {port}")
 
 async def upload_daily_quiz():
-    # सबसे पहले Web Server स्टार्ट करें ताकि Render Happy रहे
+    # Web Server चालू करना
     await start_web_server()
     
     async with app:
@@ -52,14 +51,15 @@ async def upload_daily_quiz():
 
         for index, item in enumerate(questions_db, start=1):
             try:
-                formatted_options = [InputPollOption(text=str(opt)) for opt in item["options"]]
+                # ऑप्शंस को शुद्ध स्ट्रिंग लिस्ट में सुनिश्चित करना
+                formatted_options = [str(opt) for opt in item["options"]]
 
                 await app.send_poll(
                     chat_id=target_chat_id,
-                    question=item["question"],
+                    question=str(item["question"]),
                     options=formatted_options,
                     type="quiz",
-                    correct_option_id=item["correct_id"],
+                    correct_option_id=int(item["correct_id"]),
                     is_anonymous=True
                 )
                 print(f"✅ [{index}/{len(questions_db)}] Quiz Posted Successfully!")
@@ -71,7 +71,7 @@ async def upload_daily_quiz():
                 
         print("\n🎉 All Quizzes Uploaded Successfully!")
 
-        # Web Server को चालू रखने के लिए लूप
+        # Render सर्विस को एक्टिव रखने के लिए लूप
         while True:
             await asyncio.sleep(3600)
 
