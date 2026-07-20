@@ -2,79 +2,98 @@ import os
 import json
 import asyncio
 from aiohttp import web
-from pyrogram import Client
+from pyrogram import Client, filters
 
+# ================= CONFIG =================
 API_ID = int(os.environ.get("API_ID"))
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHANNEL_ID = int(os.environ.get("CHANNEL_ID"))
 
-RAW_CHANNEL = os.environ.get("CHANNEL_ID")
-CHANNEL_ID = int(RAW_CHANNEL) if RAW_CHANNEL.startswith("-100") or RAW_CHANNEL.lstrip('-').isdigit() else RAW_CHANNEL
+app = Client(
+    "quiz_bot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN
+)
 
-app = Client("quiz_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-
-# Render Web Port Binding के लिए Web Server
-async def handle_ping(request):
-    return web.Response(text="Bot is Live and Healthy!")
+# ================= WEB SERVER =================
+async def handle(request):
+    return web.Response(text="Quiz Bot is Running!")
 
 async def start_web_server():
-    server = web.Application()
-    server.router.add_get('/', handle_ping)
-    runner = web.AppRunner(server)
+    web_app = web.Application()
+    web_app.router.add_get("/", handle)
+
+    runner = web.AppRunner(web_app)
     await runner.setup()
+
     port = int(os.environ.get("PORT", 8080))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    print(f"🌐 Web Server running on port {port}")
 
-async def upload_daily_quiz():
-    # Web Server चालू करना
+    print(f"🌐 Web server running on port {port}")
+
+# ================= LOAD QUESTIONS =================
+def load_questions():
+    with open("questions.json", "r", encoding="utf-8") as f:
+        return json.load(f)
+
+# ================= UPLOAD QUIZZES =================
+async def upload_quizzes():
+    questions = load_questions()
+
+    chat = await app.get_chat(CHANNEL_ID)
+    print(f"📢 Connected to: {chat.title}")
+
+    for i, q in enumerate(questions, start=1):
+        try:
+            await app.send_poll(
+                chat_id=CHANNEL_ID,
+                question=q["question"],
+                options=q["options"],
+                type="quiz",
+                correct_option_id=q["correct_id"],
+                is_anonymous=True,
+                explanation="Correct Answer"
+            )
+
+            print(f"✅ Quiz {i} uploaded")
+            await asyncio.sleep(3)
+
+        except Exception as e:
+            print(f"❌ Error in quiz {i}: {e}")
+            await asyncio.sleep(5)
+
+# ================= COMMANDS =================
+@app.on_message(filters.command("start"))
+async def start_cmd(client, message):
+    await message.reply_text(
+        "🤖 Quiz Bot Active!\n"
+        "Use /upload to upload quizzes."
+    )
+
+@app.on_message(filters.command("upload"))
+async def upload_cmd(client, message):
+    await message.reply_text("⏳ Uploading quizzes...")
+    await upload_quizzes()
+    await message.reply_text("✅ All quizzes uploaded!")
+
+# ================= MAIN =================
+async def main():
     await start_web_server()
-    
-    async with app:
-        print("🚀 Quiz Uploading Started...")
-        
-        try:
-            chat = await app.get_chat(CHANNEL_ID)
-            target_chat_id = chat.id
-            print(f"Connected to Channel: {chat.title} ({target_chat_id})")
-        except Exception as e:
-            print(f"❌ Channel Connect Error: {e}")
-            return
+    await app.start()
 
-        try:
-            with open("questions.json", "r", encoding="utf-8") as file:
-                questions_db = json.load(file)
-        except Exception as e:
-            print(f"❌ Error loading questions.json: {e}")
-            return
+    me = await app.get_me()
+    print(f"🤖 Logged in as @{me.username}")
 
-        for index, item in enumerate(questions_db, start=1):
-            try:
-                # ऑप्शंस को शुद्ध स्ट्रिंग लिस्ट में सुनिश्चित करना
-                formatted_options = [str(opt) for opt in item["options"]]
+    # Startup par automatic upload
+    await upload_quizzes()
 
-                await app.send_poll(
-                    chat_id=target_chat_id,
-                    question=str(item["question"]),
-                    options=formatted_options,
-                    type="quiz",
-                    correct_option_id=int(item["correct_id"]),
-                    is_anonymous=True
-                )
-                print(f"✅ [{index}/{len(questions_db)}] Quiz Posted Successfully!")
-                await asyncio.sleep(3)
-                
-            except Exception as e:
-                print(f"⚠️ Error on Question {index}: {e}")
-                await asyncio.sleep(5)
-                
-        print("\n🎉 All Quizzes Uploaded Successfully!")
+    print("🚀 Bot is running...")
 
-        # Render सर्विस को एक्टिव रखने के लिए लूप
-        while True:
-            await asyncio.sleep(3600)
+    while True:
+        await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(upload_daily_quiz())
+    asyncio.run(main())
