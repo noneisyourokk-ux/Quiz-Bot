@@ -1,12 +1,13 @@
+import os
 import json
 import asyncio
 from pyrogram import Client
 
-# ⚙️ अपनी डिटेल्स यहाँ दर्ज करें
-API_ID = 12345678  # अपना API ID डालें
-API_HASH = "YOUR_API_HASH"  # अपना API Hash डालें
-BOT_TOKEN = "YOUR_BOT_TOKEN"  # अपना Bot Token डालें
-CHANNEL_ID = "@your_channel_username"  # अपने चैनल का यूज़रनेम या ID (जैसे -100xxx)
+# Render के Environment Variables से वैल्यू पढ़ना
+API_ID = int(os.environ.get("API_ID"))
+API_HASH = os.environ.get("API_HASH")
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHANNEL_ID = os.environ.get("CHANNEL_ID")
 
 app = Client("quiz_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
@@ -14,7 +15,6 @@ async def upload_daily_quiz():
     async with app:
         print("🚀 Quiz Uploading Started...")
         
-        # JSON फ़ाइल से सवाल लोड करना
         try:
             with open("questions.json", "r", encoding="utf-8") as file:
                 questions_db = json.load(file)
@@ -24,7 +24,6 @@ async def upload_daily_quiz():
 
         for index, item in enumerate(questions_db, start=1):
             try:
-                # Telegram Quiz Poll भेजना
                 await app.send_poll(
                     chat_id=CHANNEL_ID,
                     question=item["question"],
@@ -34,9 +33,7 @@ async def upload_daily_quiz():
                     is_anonymous=True
                 )
                 print(f"✅ [{index}/{len(questions_db)}] Quiz Posted Successfully!")
-                
-                # FloodWait / Limit से बचने के लिए 3 सेकंड का गैप
-                await asyncio.sleep(3)
+                await asyncio.sleep(3)  # 3 second gap
                 
             except Exception as e:
                 print(f"⚠️ Error on Question {index}: {e}")
